@@ -23,11 +23,28 @@ def get_lunch_for_today():
 
 def send(today, items):
     if items:
-        body = f"🍱 오늘({today}) 점심 메뉴\n" + "\n".join(f"• {m}" for m in items)
+        body_text = f"🍱 오늘({today}) 점심 메뉴\n\n" + "\n".join(f"- {m}" for m in items)
     else:
-        body = f"오늘({today})은 식단 정보가 없어요 😢"
-    requests.post(WEBHOOK_URL, json={"content": body})  # 슬랙이면 "text"
-    print(body)
+        body_text = f"오늘({today})은 식단 정보가 없어요 😢"
+
+    payload = {
+        "type": "message",
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "type": "AdaptiveCard",
+                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                    "version": "1.4",
+                    "body": [
+                        {"type": "TextBlock", "text": body_text, "wrap": True}
+                    ]
+                }
+            }
+        ]
+    }
+    requests.post(WEBHOOK_URL, json=payload)
+    print(body_text)
 
 if __name__ == "__main__":
     send(*get_lunch_for_today())
