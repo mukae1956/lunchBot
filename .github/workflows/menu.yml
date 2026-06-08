@@ -23,5 +23,5 @@ jobs:
       - name: 메뉴 봇 실행
         env:
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python menu_bot.py
