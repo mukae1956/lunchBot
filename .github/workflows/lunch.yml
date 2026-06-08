@@ -1,0 +1,26 @@
+name: Lunch Menu Bot
+
+on:
+  schedule:
+    - cron: '0 2 * * 1-5'   # 평일 KST 11:00
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 라이브러리 설치
+        run: pip install -r requirements.txt
+
+      - name: 점심 메뉴 봇 실행
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: python lunch_bot.py
