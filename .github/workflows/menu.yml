@@ -8,9 +8,14 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write         # history.json 커밋을 위해 필요
+
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Python 설치
         uses: actions/setup-python@v5
