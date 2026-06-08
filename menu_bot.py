@@ -3,13 +3,13 @@ import json
 import datetime
 import requests
 from bs4 import BeautifulSoup
-import anthropic
+from openai import OpenAI
 
 WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 URL = "https://www.kopo.ac.kr/gm/content.do?menu=12623"
 WEEKDAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
 
-client = anthropic.Anthropic()  # ANTHROPIC_API_KEY 자동 사용
+client = OpenAI()  # OPENAI_API_KEY 환경변수 자동 사용
 
 
 def get_lunch_for_today():
@@ -30,29 +30,26 @@ def analyze(items):
     prompt = f"""다음은 구내식당 점심 메뉴야: {", ".join(items)}
 
 각 음식의 1인분 기준 칼로리(kcal)와 탄수화물/단백질/지방(g)을 추정하고
-전체 합계를 내줘. 아래 JSON 형식으로만 응답해 (마크다운·설명 없이 JSON만):
+전체 합계를 내줘. 아래 JSON 형식으로만 응답해:
 {{
   "dishes": [{{"name": "음식명", "kcal": 0, "carb": 0, "protein": 0, "fat": 0}}],
   "total": {{"kcal": 0, "carb": 0, "protein": 0, "fat": 0}}
 }}"""
-    msg = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1500,
+    resp = client.chat.completions.create(
+        model="gpt-5.4-mini",
         messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},  # JSON 보장
     )
-    text = msg.content[0].text.strip().replace("```json", "").replace("```", "").strip()
-    return json.loads(text)
+    return json.loads(resp.choices[0].message.content)
 
 
 def build_card(today, items, data):
     body = [{"type": "TextBlock", "text": f"🍱 오늘({today}) 점심", "weight": "Bolder", "size": "Large"}]
-
     for d in data["dishes"]:
         body.append({
             "type": "TextBlock", "wrap": True,
             "text": f"**{d['name']}** — {d['kcal']}kcal (탄 {d['carb']}/단 {d['protein']}/지 {d['fat']}g)"
         })
-
     t = data["total"]
     body.append({"type": "TextBlock", "text": "— 합계 —", "weight": "Bolder", "spacing": "Medium"})
     body.append({"type": "FactSet", "facts": [
@@ -81,7 +78,7 @@ def send_card(body):
     requests.post(WEBHOOK_URL, json=payload)
 
 
-def send_text(text):  # 메뉴 없거나 분석 실패 시 fallback
+def send_text(text):
     send_card([{"type": "TextBlock", "text": text, "wrap": True}])
 
 
@@ -95,7 +92,6 @@ if __name__ == "__main__":
             send_card(build_card(today, items, data))
             print("전송 완료")
         except Exception as e:
-            # 분석 실패해도 메뉴는 보냄
             menu = "\n".join(f"- {m}" for m in items)
             send_text(f"🍱 오늘({today}) 점심\n{menu}\n\n(영양정보 분석 실패: {e})")
             print("분석 실패, 메뉴만 전송:", e)
