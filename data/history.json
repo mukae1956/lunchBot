@@ -79,8 +79,8 @@
       "dishes": [
         {
           "name": "날치알김치볶음밥",
-          "kcal": 520,
-          "carb": 90,
+          "kcal": 450,
+          "carb": 75,
           "protein": 12,
           "fat": 15
         },
@@ -88,57 +88,57 @@
           "name": "계란후라이",
           "kcal": 90,
           "carb": 1,
-          "protein": 7,
+          "protein": 6,
           "fat": 7
         },
         {
           "name": "팽이버섯장국",
-          "kcal": 40,
-          "carb": 8,
-          "protein": 3,
-          "fat": 0.5
+          "kcal": 30,
+          "carb": 5,
+          "protein": 2,
+          "fat": 1
         },
         {
           "name": "고추마요치킨",
-          "kcal": 400,
+          "kcal": 500,
           "carb": 20,
           "protein": 30,
-          "fat": 25
+          "fat": 35
         },
         {
           "name": "오이피클",
+          "kcal": 10,
+          "carb": 2,
+          "protein": 0,
+          "fat": 0
+        },
+        {
+          "name": "깍두기",
           "kcal": 20,
           "carb": 5,
           "protein": 1,
           "fat": 0
         },
         {
-          "name": "깍두기",
-          "kcal": 30,
-          "carb": 7,
-          "protein": 1,
-          "fat": 0
-        },
-        {
           "name": "망고쥬스",
-          "kcal": 150,
-          "carb": 40,
-          "protein": 1,
+          "kcal": 120,
+          "carb": 30,
+          "protein": 0,
           "fat": 0
         }
       ],
       "total": {
-        "kcal": 1250,
-        "carb": 171,
-        "protein": 55,
-        "fat": 47.5
+        "kcal": 1220,
+        "carb": 138,
+        "protein": 51,
+        "fat": 58
       }
     },
     "image": "https://raw.githubusercontent.com/mukae1956/lunchBot/main/data/images/2026-06-09.jpg",
     "it_term": {
-      "term": "ETL (Extract, Transform, Load)",
-      "definition": "ETL은 데이터를 추출하고, 변환하며, 최종적으로 다른 데이터 저장소에 로드하는 과정을 말해요. 데이터 분석이나 비즈니스 인텔리전스에서 주로 사용됩니다.",
-      "example": "새로운 고객 데이터를 CRM에서 추출한 후, 필요한 형식으로 변환해서 데이터 웨어하우스에 로드하는 과정이 ETL이에요."
+      "term": "API (응용 프로그램 인터페이스)",
+      "definition": "API는 서로 다른 소프트웨어 간의 통신을 가능하게 하는 규칙 및 도구 모음이에요. 개발자들이 다른 서비스나 플랫폼과 쉽게 연동할 수 있도록 도와줍니다.",
+      "example": "데이터 분석 앱에서 외부 데이터 소스를 가져오기 위해 API를 사용하곤 해요."
     }
   }
 ]
