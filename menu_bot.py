@@ -1,8 +1,11 @@
 import os
+import io
+import time
 import json
 import datetime
 import subprocess
 import requests
+from PIL import Image
 from bs4 import BeautifulSoup
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -161,28 +164,60 @@ def generate_meal_image(items: list) -> str | None:
 
 def persist_meal_image(temp_url: str | None, date_str: str) -> str | None:
     """
-    DALL·E 임시 URL은 약 1시간 뒤 만료되므로, GitHub Actions 환경에서는
-    이미지를 repo에 저장해 raw.githubusercontent URL(영구)로 바꿔 반환한다.
+    DALL·E 임시 URL은 약 1시간 뒤 만료되고 PNG가 1~3MB라 Teams에서 렌더가 안 될 수 있다.
+    그래서 이미지를 작은 JPEG(<=95KB)로 압축해 GitHub Actions 환경에서는 repo에 저장하고
+    raw.githubusercontent URL(영구)로 바꿔 반환한다.
     로컬이거나 실패 시에는 임시 URL을 그대로 반환한다.
-    ※ raw URL이 Teams 카드에서 보이려면 repo가 public 이어야 함.
+    ※ raw URL이 Teams 카드에서 보이려면 repo가 반드시 public 이어야 함.
     """
     if not temp_url:
         return None
     if not os.environ.get("GITHUB_ACTIONS"):
-        return temp_url  # 로컬: 임시 URL 그대로 사용
+        return temp_url  # 로컬: 임시 URL 그대로 사용 (호스팅 불가)
     try:
-        img = requests.get(temp_url, timeout=30)
-        img.raise_for_status()
+        raw = requests.get(temp_url, timeout=30)
+        raw.raise_for_status()
+
+        # 축소 + JPEG 압축 (Teams 렌더링 안정성을 위해 95KB 이하 목표)
+        img = Image.open(io.BytesIO(raw.content)).convert("RGB")
+        img.thumbnail((640, 640))
         os.makedirs(IMAGE_DIR, exist_ok=True)
-        path = f"{IMAGE_DIR}/{date_str}.png"
-        with open(path, "wb") as f:
-            f.write(img.content)
+        path = f"{IMAGE_DIR}/{date_str}.jpg"
+        quality = 85
+        while True:
+            img.save(path, "JPEG", quality=quality, optimize=True)
+            if os.path.getsize(path) <= 95_000 or quality <= 40:
+                break
+            quality -= 10
+
         repo = os.environ["GITHUB_REPOSITORY"]        # owner/repo
         branch = os.environ.get("GITHUB_REF_NAME", "main")
         return f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
     except Exception as e:
         print(f"이미지 저장 실패, 임시 URL 사용: {e}")
         return temp_url
+
+
+def wait_until_public(url: str | None, tries: int = 8, delay: float = 3.0) -> str | None:
+    """
+    push 직후 raw.githubusercontent는 CDN 전파 지연으로 잠깐 404가 날 수 있다.
+    카드를 보내기 전에 URL이 200을 반환할 때까지 기다린다.
+    실패해도 URL은 그대로 반환(보내보긴 함).
+    """
+    if not url:
+        return None
+    for i in range(tries):
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                print(f"이미지 URL 공개 확인됨 (시도 {i + 1})")
+                return url
+            print(f"이미지 URL 아직 {r.status_code}, 재시도...")
+        except Exception as e:
+            print(f"이미지 URL 확인 오류: {e}")
+        time.sleep(delay)
+    print("이미지 URL 공개 확인 실패(그래도 전송 시도)")
+    return url
 
 
 # ─────────────────────────────────────────
@@ -218,7 +253,8 @@ def build_card(today: str, items: list, nutrition: dict, recent: list,
             "url": meal_image_url,
             "size": "Stretch",
             "altText": f"{today} 급식 이미지",
-            "spacing": "Medium"
+            "spacing": "Medium",
+            "msTeams": {"allowExpand": True}
         })
 
     # ── 오늘 메뉴 + 영양
@@ -375,6 +411,9 @@ if __name__ == "__main__":
             history = upsert_history(history, entry)
             save_history(history)
             git_commit_history()  # 이미지 push가 카드 전송보다 먼저 끝나야 raw URL이 뜸
+
+            # push 직후 CDN 전파 대기 (raw URL이 200 될 때까지)
+            meal_image_url = wait_until_public(meal_image_url)
 
             # 카드 전송
             card_body = build_card(today_label, items, nutrition, recent, dinner_rec, meal_image_url)
