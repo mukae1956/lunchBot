@@ -79,66 +79,66 @@
       "dishes": [
         {
           "name": "날치알김치볶음밥",
-          "kcal": 450,
-          "carb": 75,
+          "kcal": 550,
+          "carb": 80,
           "protein": 12,
-          "fat": 15
+          "fat": 20
         },
         {
           "name": "계란후라이",
           "kcal": 90,
           "carb": 1,
-          "protein": 6,
+          "protein": 7,
           "fat": 7
         },
         {
           "name": "팽이버섯장국",
-          "kcal": 30,
-          "carb": 5,
+          "kcal": 40,
+          "carb": 6,
           "protein": 2,
           "fat": 1
         },
         {
           "name": "고추마요치킨",
-          "kcal": 500,
-          "carb": 20,
-          "protein": 30,
-          "fat": 35
+          "kcal": 400,
+          "carb": 10,
+          "protein": 25,
+          "fat": 30
         },
         {
           "name": "오이피클",
-          "kcal": 10,
-          "carb": 2,
+          "kcal": 20,
+          "carb": 5,
           "protein": 0,
           "fat": 0
         },
         {
           "name": "깍두기",
-          "kcal": 20,
-          "carb": 5,
+          "kcal": 30,
+          "carb": 7,
           "protein": 1,
           "fat": 0
         },
         {
           "name": "망고쥬스",
-          "kcal": 120,
-          "carb": 30,
-          "protein": 0,
+          "kcal": 100,
+          "carb": 25,
+          "protein": 1,
           "fat": 0
         }
       ],
       "total": {
-        "kcal": 1220,
-        "carb": 138,
-        "protein": 51,
+        "kcal": 1230,
+        "carb": 134,
+        "protein": 48,
         "fat": 58
       }
     },
     "image": "https://raw.githubusercontent.com/mukae1956/lunchBot/main/data/images/2026-06-09.jpg",
     "it_term": {
-      "term": "API (응용 프로그램 인터페이스)",
-      "definition": "API는 서로 다른 소프트웨어 간의 통신을 가능하게 하는 규칙 및 도구 모음이에요. 개발자들이 다른 서비스나 플랫폼과 쉽게 연동할 수 있도록 도와줍니다.",
-      "example": "데이터 분석 앱에서 외부 데이터 소스를 가져오기 위해 API를 사용하곤 해요."
+      "term": "ETL (추출, 변환, 적재)",
+      "definition": "ETL은 데이터를 다양한 출처에서 추출하고, 필요한 형식으로 변환한 후, 데이터베이스나 데이터 웨어하우스에 적재하는 과정이에요.",
+      "example": "예를 들어, 회사의 여러 시스템에서 판매 데이터를 추출해 분석용 데이터베이스에 적재하는 데 ETL 프로세스를 사용해요."
     }
   }
 ]
