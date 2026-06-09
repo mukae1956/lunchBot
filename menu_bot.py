@@ -66,6 +66,16 @@ def get_recent(history: list, n: int = 5) -> list:
     return [h for h in history if h["date"] != today][-n:]
 
 
+def get_recent_terms(history: list, n: int = 15) -> list:
+    """최근 history에서 이미 다룬 IT 용어 목록 (중복 방지용)."""
+    terms = []
+    for h in history[-n:]:
+        term = h.get("it_term", {}).get("term")
+        if term:
+            terms.append(term)
+    return terms
+
+
 # ─────────────────────────────────────────
 # 2. 크롤링
 # ─────────────────────────────────────────
@@ -134,6 +144,27 @@ def recommend_dinner(today_items: list, recent: list) -> str:
         messages=[{"role": "user", "content": prompt}],
     )
     return resp.choices[0].message.content.strip()
+
+
+def get_it_term(recent_terms: list) -> dict:
+    """오늘의 IT 용어 하나 생성. 최근 다룬 용어는 제외해서 중복 방지."""
+    avoid = ", ".join(recent_terms) if recent_terms else "없음"
+    prompt = f"""오늘의 IT 용어를 딱 하나만 골라줘.
+데이터분석/개발 전공 학생이 알아두면 좋은 실무 용어로.
+최근에 이미 다룬 아래 용어들은 제외해줘: {avoid}
+
+아래 JSON 형식으로만 응답해:
+{{
+  "term": "용어명 (영문이면 한글 병기)",
+  "definition": "1~2문장으로 쉽고 친근하게 설명",
+  "example": "실무에서 어떻게 쓰이는지 한 줄 예시"
+}}"""
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+    )
+    return json.loads(resp.choices[0].message.content)
 
 
 # ─────────────────────────────────────────
@@ -223,7 +254,8 @@ def wait_until_public(url: str | None, tries: int = 8, delay: float = 3.0) -> st
 # ─────────────────────────────────────────
 
 def build_card(today: str, items: list, nutrition: dict, recent: list,
-               dinner_rec: str, meal_image_url: str | None = None) -> list:
+               dinner_rec: str, meal_image_url: str | None = None,
+               it_term: dict | None = None) -> list:
     body = []
 
     # ── 점심시간 안내 (맨 위)
@@ -311,6 +343,28 @@ def build_card(today: str, items: list, nutrition: dict, recent: list,
         "wrap": True
     })
 
+    # ── 오늘의 IT 용어
+    if it_term:
+        body.append({
+            "type": "TextBlock",
+            "text": "💡 오늘의 IT 용어",
+            "weight": "Bolder",
+            "spacing": "Medium"
+        })
+        body.append({
+            "type": "TextBlock",
+            "text": f"**{it_term['term']}**\n\n{it_term['definition']}",
+            "wrap": True
+        })
+        if it_term.get("example"):
+            body.append({
+                "type": "TextBlock",
+                "text": f"📌 {it_term['example']}",
+                "wrap": True,
+                "isSubtle": True,
+                "size": "Small"
+            })
+
     # ── 푸터
     body.append({
         "type": "TextBlock",
@@ -384,9 +438,11 @@ if __name__ == "__main__":
         try:
             history = load_history()
             recent = get_recent(history, n=5)
+            recent_terms = get_recent_terms(history)
 
             nutrition = analyze_nutrition(items)
             dinner_rec = recommend_dinner(items, recent)
+            it_term = get_it_term(recent_terms)
 
             # 급식판 이미지 생성 → repo 저장 → 공개 URL
             jpeg = generate_meal_jpeg(items)
@@ -399,6 +455,7 @@ if __name__ == "__main__":
                 "items": items,
                 "nutrition": nutrition,
                 "image": meal_image_url,
+                "it_term": it_term,
             }
             history = upsert_history(history, entry)
             save_history(history)
@@ -406,7 +463,8 @@ if __name__ == "__main__":
 
             # push 직후 CDN 전파 대기 후 카드 전송
             meal_image_url = wait_until_public(meal_image_url)
-            card_body = build_card(today_label, items, nutrition, recent, dinner_rec, meal_image_url)
+            card_body = build_card(today_label, items, nutrition, recent,
+                                   dinner_rec, meal_image_url, it_term)
             send_card(card_body)
             print("전송 완료")
 
