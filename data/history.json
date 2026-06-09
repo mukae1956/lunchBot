@@ -79,59 +79,59 @@
       "dishes": [
         {
           "name": "날치알김치볶음밥",
-          "kcal": 600,
-          "carb": 90,
-          "protein": 15,
-          "fat": 20
+          "kcal": 500,
+          "carb": 75,
+          "protein": 12,
+          "fat": 18
         },
         {
           "name": "계란후라이",
           "kcal": 90,
-          "carb": 0,
+          "carb": 1,
           "protein": 6,
           "fat": 7
         },
         {
           "name": "팽이버섯장국",
-          "kcal": 40,
-          "carb": 8,
-          "protein": 4,
-          "fat": 1
+          "kcal": 30,
+          "carb": 5,
+          "protein": 2,
+          "fat": 0
         },
         {
           "name": "고추마요치킨",
-          "kcal": 500,
-          "carb": 30,
+          "kcal": 400,
+          "carb": 20,
           "protein": 30,
-          "fat": 30
+          "fat": 25
         },
         {
           "name": "오이피클",
           "kcal": 20,
           "carb": 5,
-          "protein": 1,
+          "protein": 0,
           "fat": 0
         },
         {
           "name": "깍두기",
-          "kcal": 25,
-          "carb": 5,
+          "kcal": 30,
+          "carb": 6,
           "protein": 1,
           "fat": 0
         },
         {
           "name": "망고쥬스",
-          "kcal": 150,
-          "carb": 37,
+          "kcal": 120,
+          "carb": 30,
           "protein": 1,
           "fat": 0
         }
       ],
       "total": {
-        "kcal": 1415,
-        "carb": 175,
-        "protein": 58,
-        "fat": 58
+        "kcal": 1190,
+        "carb": 142,
+        "protein": 52,
+        "fat": 50
       }
     },
     "image": null
