@@ -5,6 +5,7 @@ import json
 import datetime
 import subprocess
 import requests
+from html import escape
 from PIL import Image
 from bs4 import BeautifulSoup
 from openai import OpenAI
@@ -16,20 +17,26 @@ WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 URL = "https://www.kopo.ac.kr/gm/content.do?menu=12623"
 WEEKDAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
 HISTORY_PATH = "data/history.json"
-IMAGE_DIR = "data/images"
-MAX_HISTORY = 30  # 최대 보관 일수
+PAGE_DIR = "lunch"          # GitHub Pages로 서빙되는 페이지 폴더
+MAX_HISTORY = 30            # 최대 보관 일수
 
 client = OpenAI()
 
 
 # ─────────────────────────────────────────
-# 0. 점심시간 안내 (홀수 달 11:50 / 짝수 달 12:10)
+# 0. 점심시간 (홀수 달 11:50 / 짝수 달 12:10)
 # ─────────────────────────────────────────
 
+def lunch_time_hhmm() -> str:
+    return "11:50" if datetime.date.today().month % 2 == 1 else "12:10"
+
+
+def lunch_time_korean() -> str:
+    return "11시 50분" if datetime.date.today().month % 2 == 1 else "12시 10분"
+
+
 def get_lunch_time_msg() -> str:
-    month = datetime.date.today().month
-    lunch_time = "11시 50분" if month % 2 == 1 else "12시 10분"
-    return f"데이터분석과는 {lunch_time}이 점심시간입니다"
+    return f"데이터분석과 점심시간은 {lunch_time_korean()}입니다!"
 
 
 # ─────────────────────────────────────────
@@ -134,11 +141,12 @@ def recommend_dinner(today_items: list, recent: list) -> str:
 
 
 # ─────────────────────────────────────────
-# 3-1. DALL·E 급식판 이미지 생성
+# 3-1. DALL·E 급식판 이미지 → base64 (페이지에 직접 삽입)
 # ─────────────────────────────────────────
 
-def generate_meal_image(items: list) -> str | None:
-    """오늘 메뉴를 급식판에 담은 사진을 DALL·E로 생성. (임시) URL 반환."""
+def generate_meal_image_b64(items: list) -> str | None:
+    """오늘 메뉴를 급식판에 담은 사진을 gpt-image-1로 생성 → 축소/JPEG 압축 → base64 반환."""
+    import base64
     menu = ", ".join(items)
     prompt = (
         "A Korean cafeteria stainless-steel meal tray (급식판) photographed from directly above, "
@@ -149,200 +157,275 @@ def generate_meal_image(items: list) -> str | None:
         "Realistic appetizing food photography, bright even lighting, clean wooden table background."
     )
     try:
+        # gpt-image-1은 항상 base64(b64_json)로 반환하며 response_format 파라미터는 없음.
+        # quality 값은 low / medium / high / auto.
         resp = client.images.generate(
-            model="dall-e-3",
+            model="gpt-image-1",
             prompt=prompt,
             size="1024x1024",
-            quality="standard",
+            quality="medium",
             n=1,
         )
-        return resp.data[0].url
+        raw = base64.b64decode(resp.data[0].b64_json)
+
+        # 축소 + JPEG 압축 (페이지 용량 절감)
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        img.thumbnail((900, 900))
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=82, optimize=True)
+        return base64.b64encode(buf.getvalue()).decode("ascii")
     except Exception as e:
         print(f"이미지 생성 실패: {e}")
         return None
 
 
-def persist_meal_image(temp_url: str | None, date_str: str) -> str | None:
-    """
-    DALL·E 임시 URL은 약 1시간 뒤 만료되고 PNG가 1~3MB라 Teams에서 렌더가 안 될 수 있다.
-    그래서 이미지를 작은 JPEG(<=95KB)로 압축해 GitHub Actions 환경에서는 repo에 저장하고
-    raw.githubusercontent URL(영구)로 바꿔 반환한다.
-    로컬이거나 실패 시에는 임시 URL을 그대로 반환한다.
-    ※ raw URL이 Teams 카드에서 보이려면 repo가 반드시 public 이어야 함.
-    """
-    if not temp_url:
-        return None
-    if not os.environ.get("GITHUB_ACTIONS"):
-        return temp_url  # 로컬: 임시 URL 그대로 사용 (호스팅 불가)
-    try:
-        raw = requests.get(temp_url, timeout=30)
-        raw.raise_for_status()
-
-        # 축소 + JPEG 압축 (Teams 렌더링 안정성을 위해 95KB 이하 목표)
-        img = Image.open(io.BytesIO(raw.content)).convert("RGB")
-        img.thumbnail((640, 640))
-        os.makedirs(IMAGE_DIR, exist_ok=True)
-        path = f"{IMAGE_DIR}/{date_str}.jpg"
-        quality = 85
-        while True:
-            img.save(path, "JPEG", quality=quality, optimize=True)
-            if os.path.getsize(path) <= 95_000 or quality <= 40:
-                break
-            quality -= 10
-
-        repo = os.environ["GITHUB_REPOSITORY"]        # owner/repo
-        branch = os.environ.get("GITHUB_REF_NAME", "main")
-        return f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
-    except Exception as e:
-        print(f"이미지 저장 실패, 임시 URL 사용: {e}")
-        return temp_url
-
-
-def wait_until_public(url: str | None, tries: int = 8, delay: float = 3.0) -> str | None:
-    """
-    push 직후 raw.githubusercontent는 CDN 전파 지연으로 잠깐 404가 날 수 있다.
-    카드를 보내기 전에 URL이 200을 반환할 때까지 기다린다.
-    실패해도 URL은 그대로 반환(보내보긴 함).
-    """
-    if not url:
-        return None
-    for i in range(tries):
-        try:
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                print(f"이미지 URL 공개 확인됨 (시도 {i + 1})")
-                return url
-            print(f"이미지 URL 아직 {r.status_code}, 재시도...")
-        except Exception as e:
-            print(f"이미지 URL 확인 오류: {e}")
-        time.sleep(delay)
-    print("이미지 URL 공개 확인 실패(그래도 전송 시도)")
-    return url
-
-
 # ─────────────────────────────────────────
-# 4. 카드 빌더
+# 4. 웹페이지 빌드 (식단 + 영양 + 저녁추천 + 사진)
 # ─────────────────────────────────────────
 
-def build_card(today: str, items: list, nutrition: dict, recent: list,
-               dinner_rec: str, meal_image_url: str | None = None) -> list:
-    body = []
+PAGE_SHELL = """<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__DATE__ 데이터분석과 점심</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet">
+<style>
+:root{
+  --bg:#e9edf0; --surface:#ffffff; --ink:#1d2529; --muted:#69757e;
+  --accent:#e8552d; --green:#2f8f5b; --line:#dde3e8;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{background:var(--bg);color:var(--ink);
+  font-family:'Pretendard',system-ui,-apple-system,sans-serif;
+  line-height:1.55;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:560px;margin:0 auto;padding:20px 16px 56px;}
+.eyebrow{font-size:12px;letter-spacing:.16em;color:var(--accent);font-weight:800;}
+.title{font-size:26px;font-weight:800;margin:3px 0 0;letter-spacing:-.01em;}
+.date{color:var(--muted);font-size:15px;margin-top:3px;}
+.timecard{margin-top:16px;background:var(--accent);color:#fff;border-radius:16px;
+  padding:15px 18px;display:flex;align-items:baseline;gap:12px;}
+.timecard .label{font-size:14px;opacity:.92;}
+.timecard .time{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;margin-left:auto;}
+.hero{margin-top:18px;border-radius:18px;overflow:hidden;background:#cfd6db;
+  box-shadow:0 10px 30px rgba(20,30,40,.12);}
+.hero img{display:block;width:100%;height:auto;}
+.hero .noimg{padding:52px 16px;text-align:center;color:var(--muted);font-size:14px;}
+.section{margin-top:30px;}
+.section h2{font-size:15px;font-weight:800;margin:0 0 12px;display:flex;align-items:center;gap:9px;}
+.section h2::before{content:"";width:15px;height:3px;background:var(--accent);border-radius:2px;}
+.dish{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+.dish:last-child{border-bottom:none;}
+.dish .name{font-weight:700;font-size:16px;}
+.dish .macros{color:var(--muted);font-size:13px;margin-top:3px;font-variant-numeric:tabular-nums;}
+.dish .kcal{font-family:ui-monospace,Menlo,monospace;font-weight:700;font-size:15px;white-space:nowrap;}
+.label-box{border:2px solid var(--ink);border-radius:12px;padding:14px 16px;background:var(--surface);}
+.label-box .lbtitle{font-size:12px;letter-spacing:.12em;font-weight:800;
+  border-bottom:6px solid var(--ink);padding-bottom:7px;margin-bottom:10px;}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:2px 18px;}
+.fact{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:7px 0;font-size:14px;}
+.fact .v{font-family:ui-monospace,Menlo,monospace;font-weight:700;}
+.recent{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+.recent .rtitle{font-size:13px;color:var(--muted);font-weight:700;margin-bottom:8px;}
+.dinner{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  padding:16px;white-space:pre-wrap;font-size:15px;}
+.foot{margin-top:34px;color:var(--muted);font-size:12px;text-align:center;line-height:1.7;}
+@media (prefers-reduced-motion:no-preference){.hero img{transition:transform .3s ease;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">한국폴리텍 · 데이터분석과</div>
+  <h1 class="title">오늘의 점심</h1>
+  <div class="date">__DATE__ (__DAY__)</div>
 
-    # ── 점심시간 안내 (맨 위)
-    body.append({
-        "type": "TextBlock",
-        "text": get_lunch_time_msg(),
-        "weight": "Bolder",
-        "size": "Medium",
-        "color": "Accent",
-        "wrap": True
-    })
+  <div class="timecard"><span class="label">점심시간</span><span class="time">__TIME__</span></div>
 
-    # ── 헤더
-    body.append({
-        "type": "TextBlock",
-        "text": f"🍱 오늘({today}) 점심",
-        "weight": "Bolder",
-        "size": "Large"
-    })
+  __HERO__
 
-    # ── 급식판 식단 사진 (한 눈에)
-    if meal_image_url:
-        body.append({
-            "type": "Image",
-            "url": meal_image_url,
-            "size": "Stretch",
-            "altText": f"{today} 급식 이미지",
-            "spacing": "Medium",
-            "msTeams": {"allowExpand": True}
-        })
+  <div class="section">
+    <h2>오늘 메뉴</h2>
+    __MENU__
+  </div>
 
-    # ── 오늘 메뉴 + 영양
+  <div class="section">
+    <h2>오늘 영양 합계</h2>
+    __TODAY_TOTAL__
+  </div>
+
+  __RECENT__
+
+  <div class="section">
+    <h2>저녁 추천</h2>
+    <div class="dinner">__DINNER__</div>
+  </div>
+
+  <div class="foot">영양정보와 급식판 사진은 AI 추정·생성 결과입니다.<br>__GENERATED__ 자동 생성</div>
+</div>
+</body>
+</html>"""
+
+
+def _fact(title: str, value: str) -> str:
+    return f'<div class="fact"><span>{title}</span><span class="v">{value}</span></div>'
+
+
+def build_html_page(today: str, date_str: str, items: list, nutrition: dict,
+                    recent: list, dinner_rec: str, image_b64: str | None) -> str:
+    # 사진
+    if image_b64:
+        hero = f'<div class="hero"><img src="data:image/jpeg;base64,{image_b64}" alt="오늘의 급식판 사진"></div>'
+    else:
+        hero = '<div class="hero"><div class="noimg">급식판 사진을 불러오지 못했어요</div></div>'
+
+    # 메뉴별
+    rows = []
     for d in nutrition["dishes"]:
-        body.append({
-            "type": "TextBlock",
-            "wrap": True,
-            "text": (
-                f"**{d['name']}** — {d['kcal']}kcal "
-                f"(탄 {d['carb']}g / 단 {d['protein']}g / 지 {d['fat']}g)"
-            )
-        })
+        rows.append(
+            '<div class="dish">'
+            f'<div><div class="name">{escape(str(d["name"]))}</div>'
+            f'<div class="macros">탄 {d["carb"]}g · 단 {d["protein"]}g · 지 {d["fat"]}g</div></div>'
+            f'<div class="kcal">{d["kcal"]} kcal</div>'
+            '</div>'
+        )
+    menu_html = "".join(rows)
 
+    # 오늘 합계 (영양성분표 스타일)
     t = nutrition["total"]
-    body.append({"type": "TextBlock", "text": "— 오늘 합계 —", "weight": "Bolder", "spacing": "Medium"})
-    body.append({"type": "FactSet", "facts": [
-        {"title": "칼로리", "value": f"{t['kcal']} kcal"},
-        {"title": "탄수화물", "value": f"{t['carb']} g"},
-        {"title": "단백질", "value": f"{t['protein']} g"},
-        {"title": "지방", "value": f"{t['fat']} g"},
-    ]})
+    today_total = (
+        '<div class="label-box"><div class="lbtitle">TODAY · 1인분 합계</div><div class="facts">'
+        + _fact("칼로리", f"{t['kcal']} kcal")
+        + _fact("탄수화물", f"{t['carb']} g")
+        + _fact("단백질", f"{t['protein']} g")
+        + _fact("지방", f"{t['fat']} g")
+        + '</div></div>'
+    )
 
-    # ── 최근 5일 누적
+    # 최근 누적
+    recent_html = ""
     if recent:
         acc = {"kcal": 0, "carb": 0, "protein": 0, "fat": 0}
         for h in recent:
             for k in acc:
                 acc[k] += h["nutrition"]["total"][k]
-        # 오늘 포함
         for k in acc:
             acc[k] += t[k]
+        days = len(recent) + 1
+        recent_html = (
+            '<div class="section"><h2>최근 누적</h2>'
+            f'<div class="recent"><div class="rtitle">최근 {days}일 합계 (오늘 포함)</div>'
+            '<div class="facts">'
+            + _fact("칼로리", f"{acc['kcal']} kcal")
+            + _fact("탄수화물", f"{acc['carb']} g")
+            + _fact("단백질", f"{acc['protein']} g")
+            + _fact("지방", f"{acc['fat']} g")
+            + '</div></div></div>'
+        )
 
-        days_count = len(recent) + 1
-        body.append({
+    generated = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    html = PAGE_SHELL
+    html = html.replace("__DATE__", escape(date_str))
+    html = html.replace("__DAY__", escape(today))
+    html = html.replace("__TIME__", lunch_time_hhmm())
+    html = html.replace("__HERO__", hero)
+    html = html.replace("__MENU__", menu_html)
+    html = html.replace("__TODAY_TOTAL__", today_total)
+    html = html.replace("__RECENT__", recent_html)
+    html = html.replace("__DINNER__", escape(dinner_rec))
+    html = html.replace("__GENERATED__", generated)
+    return html
+
+
+def publish_page(html: str, date_str: str) -> str | None:
+    """페이지를 lunch/{date}.html 로 저장. Actions면 GitHub Pages 공개 URL 반환."""
+    os.makedirs(PAGE_DIR, exist_ok=True)
+    path = f"{PAGE_DIR}/{date_str}.html"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+    # 항상 최신본을 가리키는 고정 링크도 갱신
+    with open(f"{PAGE_DIR}/index.html", "w", encoding="utf-8") as f:
+        f.write(html)
+
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return "file://" + os.path.abspath(path)  # 로컬: 미리보기용 경로
+
+    repo_full = os.environ["GITHUB_REPOSITORY"]   # owner/repo
+    owner, repo = repo_full.split("/", 1)
+    return f"https://{owner.lower()}.github.io/{repo}/{PAGE_DIR}/{date_str}.html"
+
+
+def wait_until_public(url: str | None, tries: int = 15, delay: float = 5.0) -> str | None:
+    """GitHub Pages 배포는 비동기라 잠깐 404가 날 수 있다. 200 될 때까지 대기(최선)."""
+    if not url or url.startswith("file://"):
+        return url
+    for i in range(tries):
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                print(f"페이지 공개 확인됨 (시도 {i + 1})")
+                return url
+            print(f"페이지 아직 {r.status_code}, 재시도...")
+        except Exception as e:
+            print(f"페이지 확인 오류: {e}")
+        time.sleep(delay)
+    print("페이지 공개 확인 실패(그래도 링크 전송 — 곧 배포되면 열림)")
+    return url
+
+
+# ─────────────────────────────────────────
+# 5. 카드 빌더 (점심시간 + 링크만)
+# ─────────────────────────────────────────
+
+def build_link_card(page_url: str) -> tuple[list, list]:
+    body = [
+        {
             "type": "TextBlock",
-            "text": f"— 최근 {days_count}일 누적 —",
+            "text": get_lunch_time_msg(),
             "weight": "Bolder",
-            "spacing": "Medium"
-        })
-        body.append({"type": "FactSet", "facts": [
-            {"title": "칼로리", "value": f"{acc['kcal']} kcal"},
-            {"title": "탄수화물", "value": f"{acc['carb']} g"},
-            {"title": "단백질", "value": f"{acc['protein']} g"},
-            {"title": "지방", "value": f"{acc['fat']} g"},
-        ]})
-
-    # ── 저녁 추천
-    body.append({
-        "type": "TextBlock",
-        "text": "🌙 오늘 저녁 추천",
-        "weight": "Bolder",
-        "spacing": "Medium"
-    })
-    body.append({
-        "type": "TextBlock",
-        "text": dinner_rec,
-        "wrap": True
-    })
-
-    # ── 푸터
-    body.append({
-        "type": "TextBlock",
-        "text": "※ 영양정보·식단 사진은 AI 추정/생성입니다",
-        "size": "Small",
-        "isSubtle": True,
-        "spacing": "Medium"
-    })
-
-    print(json.dumps(body, ensure_ascii=False, indent=2))
-
-    return body
+            "size": "Large",
+            "color": "Accent",
+            "wrap": True,
+        },
+        {
+            "type": "TextBlock",
+            "text": "식단 및 저녁 추천을 확인하고 싶으면 아래 버튼(또는 링크)을 눌러 주세요!",
+            "wrap": True,
+            "spacing": "Small",
+        },
+        {
+            "type": "TextBlock",
+            "text": f"[🍱 오늘 식단 보러가기]({page_url})",
+            "wrap": True,
+            "spacing": "Small",
+        },
+    ]
+    actions = [
+        {"type": "Action.OpenUrl", "title": "🍱 오늘 식단 보기", "url": page_url}
+    ]
+    return body, actions
 
 
 # ─────────────────────────────────────────
-# 5. 전송
+# 6. 전송
 # ─────────────────────────────────────────
 
-def send_card(body: list):
+def send_card(body: list, actions: list | None = None):
+    content = {
+        "type": "AdaptiveCard",
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "version": "1.2",   # 모바일 호환 위해 1.2 유지
+        "body": body,
+    }
+    if actions:
+        content["actions"] = actions
     payload = {
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "type": "AdaptiveCard",
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "version": "1.4",
-                "body": body,
-            }
+            "content": content,
         }]
     }
     requests.post(WEBHOOK_URL, json=payload)
@@ -353,7 +436,7 @@ def send_text(text: str):
 
 
 # ─────────────────────────────────────────
-# 6. GitHub 자동 커밋
+# 7. GitHub 자동 커밋
 # ─────────────────────────────────────────
 
 def git_commit_history():
@@ -364,15 +447,12 @@ def git_commit_history():
     today = datetime.date.today().isoformat()
     subprocess.run(["git", "config", "user.email", "bot@github-actions"], check=True)
     subprocess.run(["git", "config", "user.name", "Lunch Menu Bot"], check=True)
-    subprocess.run(["git", "add", "data/"], check=True)  # history.json + images 모두 포함
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"],
-        capture_output=True
-    )
-    if result.returncode != 0:  # 변경사항 있을 때만 커밋
-        subprocess.run(["git", "commit", "-m", f"chore: update lunch data {today}"], check=True)
+    subprocess.run(["git", "add", "-A"], check=True)  # history.json + lunch/*.html
+    result = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
+    if result.returncode != 0:
+        subprocess.run(["git", "commit", "-m", f"chore: update lunch page {today}"], check=True)
         subprocess.run(["git", "push"], check=True)
-        print("히스토리/이미지 커밋 완료")
+        print("히스토리/페이지 커밋 완료")
     else:
         print("변경사항 없음, 커밋 스킵")
 
@@ -395,10 +475,12 @@ if __name__ == "__main__":
 
             nutrition = analyze_nutrition(items)
             dinner_rec = recommend_dinner(items, recent)
+            image_b64 = generate_meal_image_b64(items)
 
-            # 급식판 이미지 생성 → (Actions면) repo 저장 후 영구 URL
-            temp_image_url = generate_meal_image(items)
-            meal_image_url = persist_meal_image(temp_image_url, today_str)
+            # 페이지 생성 → 저장
+            html = build_html_page(today_label, today_str, items, nutrition,
+                                   recent, dinner_rec, image_b64)
+            page_url = publish_page(html, today_str)
 
             # 히스토리 업데이트
             entry = {
@@ -406,19 +488,17 @@ if __name__ == "__main__":
                 "day": today_label,
                 "items": items,
                 "nutrition": nutrition,
-                "image": meal_image_url,
+                "page_url": page_url,
             }
             history = upsert_history(history, entry)
             save_history(history)
-            git_commit_history()  # 이미지 push가 카드 전송보다 먼저 끝나야 raw URL이 뜸
+            git_commit_history()  # 페이지 push가 링크 전송보다 먼저 끝나야 함
 
-            # push 직후 CDN 전파 대기 (raw URL이 200 될 때까지)
-            meal_image_url = wait_until_public(meal_image_url)
-
-            # 카드 전송
-            card_body = build_card(today_label, items, nutrition, recent, dinner_rec, meal_image_url)
-            send_card(card_body)
-            print("전송 완료")
+            # Pages 배포 대기(최선) 후 링크 카드 전송
+            page_url = wait_until_public(page_url)
+            body, actions = build_link_card(page_url)
+            send_card(body, actions)
+            print("전송 완료:", page_url)
 
         except Exception as e:
             menu = "\n".join(f"- {m}" for m in items)
