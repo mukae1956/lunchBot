@@ -80,9 +80,9 @@
         {
           "name": "날치알김치볶음밥",
           "kcal": 500,
-          "carb": 70,
+          "carb": 80,
           "protein": 12,
-          "fat": 20
+          "fat": 18
         },
         {
           "name": "계란후라이",
@@ -93,23 +93,23 @@
         },
         {
           "name": "팽이버섯장국",
-          "kcal": 50,
-          "carb": 9,
-          "protein": 3,
-          "fat": 1
+          "kcal": 30,
+          "carb": 6,
+          "protein": 2,
+          "fat": 0.5
         },
         {
           "name": "고추마요치킨",
           "kcal": 400,
-          "carb": 20,
-          "protein": 30,
-          "fat": 25
+          "carb": 16,
+          "protein": 28,
+          "fat": 24
         },
         {
           "name": "오이피클",
           "kcal": 20,
-          "carb": 5,
-          "protein": 0,
+          "carb": 4,
+          "protein": 0.5,
           "fat": 0
         },
         {
@@ -128,10 +128,10 @@
         }
       ],
       "total": {
-        "kcal": 1210,
-        "carb": 142,
-        "protein": 53,
-        "fat": 53
+        "kcal": 1190,
+        "carb": 144,
+        "protein": 50.5,
+        "fat": 49.5
       }
     },
     "image": "https://raw.githubusercontent.com/mukae1956/lunchBot/main/data/images/2026-06-09.jpg"
