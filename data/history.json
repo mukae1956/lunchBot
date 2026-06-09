@@ -79,37 +79,37 @@
       "dishes": [
         {
           "name": "날치알김치볶음밥",
-          "kcal": 500,
-          "carb": 80,
+          "kcal": 520,
+          "carb": 90,
           "protein": 12,
-          "fat": 18
+          "fat": 15
         },
         {
           "name": "계란후라이",
           "kcal": 90,
           "carb": 1,
-          "protein": 6,
+          "protein": 7,
           "fat": 7
         },
         {
           "name": "팽이버섯장국",
-          "kcal": 30,
-          "carb": 6,
-          "protein": 2,
+          "kcal": 40,
+          "carb": 8,
+          "protein": 3,
           "fat": 0.5
         },
         {
           "name": "고추마요치킨",
           "kcal": 400,
-          "carb": 16,
-          "protein": 28,
-          "fat": 24
+          "carb": 20,
+          "protein": 30,
+          "fat": 25
         },
         {
           "name": "오이피클",
           "kcal": 20,
-          "carb": 4,
-          "protein": 0.5,
+          "carb": 5,
+          "protein": 1,
           "fat": 0
         },
         {
@@ -121,19 +121,24 @@
         },
         {
           "name": "망고쥬스",
-          "kcal": 120,
-          "carb": 30,
+          "kcal": 150,
+          "carb": 40,
           "protein": 1,
           "fat": 0
         }
       ],
       "total": {
-        "kcal": 1190,
-        "carb": 144,
-        "protein": 50.5,
-        "fat": 49.5
+        "kcal": 1250,
+        "carb": 171,
+        "protein": 55,
+        "fat": 47.5
       }
     },
-    "image": "https://raw.githubusercontent.com/mukae1956/lunchBot/main/data/images/2026-06-09.jpg"
+    "image": "https://raw.githubusercontent.com/mukae1956/lunchBot/main/data/images/2026-06-09.jpg",
+    "it_term": {
+      "term": "ETL (Extract, Transform, Load)",
+      "definition": "ETL은 데이터를 추출하고, 변환하며, 최종적으로 다른 데이터 저장소에 로드하는 과정을 말해요. 데이터 분석이나 비즈니스 인텔리전스에서 주로 사용됩니다.",
+      "example": "새로운 고객 데이터를 CRM에서 추출한 후, 필요한 형식으로 변환해서 데이터 웨어하우스에 로드하는 과정이 ETL이에요."
+    }
   }
 ]
