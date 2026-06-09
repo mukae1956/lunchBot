@@ -79,10 +79,10 @@
       "dishes": [
         {
           "name": "날치알김치볶음밥",
-          "kcal": 450,
-          "carb": 65,
+          "kcal": 500,
+          "carb": 70,
           "protein": 12,
-          "fat": 15
+          "fat": 20
         },
         {
           "name": "계란후라이",
@@ -93,47 +93,47 @@
         },
         {
           "name": "팽이버섯장국",
-          "kcal": 40,
-          "carb": 6,
+          "kcal": 50,
+          "carb": 9,
           "protein": 3,
           "fat": 1
         },
         {
           "name": "고추마요치킨",
-          "kcal": 300,
-          "carb": 15,
-          "protein": 25,
-          "fat": 18
+          "kcal": 400,
+          "carb": 20,
+          "protein": 30,
+          "fat": 25
         },
         {
           "name": "오이피클",
           "kcal": 20,
           "carb": 5,
-          "protein": 1,
+          "protein": 0,
           "fat": 0
         },
         {
           "name": "깍두기",
-          "kcal": 20,
-          "carb": 5,
+          "kcal": 30,
+          "carb": 7,
           "protein": 1,
           "fat": 0
         },
         {
           "name": "망고쥬스",
-          "kcal": 150,
-          "carb": 35,
+          "kcal": 120,
+          "carb": 30,
           "protein": 1,
           "fat": 0
         }
       ],
       "total": {
-        "kcal": 1070,
-        "carb": 132,
-        "protein": 49,
-        "fat": 41
+        "kcal": 1210,
+        "carb": 142,
+        "protein": 53,
+        "fat": 53
       }
     },
-    "page_url": "https://mukae1956.github.io/lunchBot/lunch/2026-06-09.html"
+    "image": "https://raw.githubusercontent.com/mukae1956/lunchBot/main/data/images/2026-06-09.jpg"
   }
 ]
