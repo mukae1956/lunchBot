@@ -2,7 +2,7 @@ name: Lunch Menu Bot
 
 on:
   schedule:
-    - cron: '41 9 * * 1-5'   # 평일 KST 11:00 (UTC 02:00)
+    - cron: '56 0 * * 1-5' 
   workflow_dispatch:          # 수동 실행 버튼 (테스트용)
 
 jobs:
