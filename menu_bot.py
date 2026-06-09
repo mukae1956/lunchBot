@@ -13,9 +13,20 @@ WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 URL = "https://www.kopo.ac.kr/gm/content.do?menu=12623"
 WEEKDAYS = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
 HISTORY_PATH = "data/history.json"
+IMAGE_DIR = "data/images"
 MAX_HISTORY = 30  # 최대 보관 일수
 
 client = OpenAI()
+
+
+# ─────────────────────────────────────────
+# 0. 점심시간 안내 (홀수 달 11:50 / 짝수 달 12:10)
+# ─────────────────────────────────────────
+
+def get_lunch_time_msg() -> str:
+    month = datetime.date.today().month
+    lunch_time = "11시 50분" if month % 2 == 1 else "12시 10분"
+    return f"데이터분석과는 {lunch_time}이 점심시간입니다"
 
 
 # ─────────────────────────────────────────
@@ -120,11 +131,77 @@ def recommend_dinner(today_items: list, recent: list) -> str:
 
 
 # ─────────────────────────────────────────
+# 3-1. DALL·E 급식판 이미지 생성
+# ─────────────────────────────────────────
+
+def generate_meal_image(items: list) -> str | None:
+    """오늘 메뉴를 급식판에 담은 사진을 DALL·E로 생성. (임시) URL 반환."""
+    menu = ", ".join(items)
+    prompt = (
+        "A Korean cafeteria stainless-steel meal tray (급식판) photographed from directly above, "
+        "divided into compartments, each compartment neatly filled with the day's dishes. "
+        f"The dishes are: {menu}. "
+        "Rice in the largest compartment, soup or stew in the round compartment, "
+        "side dishes (반찬) in the smaller compartments, with chopsticks and a spoon on the side. "
+        "Realistic appetizing food photography, bright even lighting, clean wooden table background."
+    )
+    try:
+        resp = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+        return resp.data[0].url
+    except Exception as e:
+        print(f"이미지 생성 실패: {e}")
+        return None
+
+
+def persist_meal_image(temp_url: str | None, date_str: str) -> str | None:
+    """
+    DALL·E 임시 URL은 약 1시간 뒤 만료되므로, GitHub Actions 환경에서는
+    이미지를 repo에 저장해 raw.githubusercontent URL(영구)로 바꿔 반환한다.
+    로컬이거나 실패 시에는 임시 URL을 그대로 반환한다.
+    ※ raw URL이 Teams 카드에서 보이려면 repo가 public 이어야 함.
+    """
+    if not temp_url:
+        return None
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return temp_url  # 로컬: 임시 URL 그대로 사용
+    try:
+        img = requests.get(temp_url, timeout=30)
+        img.raise_for_status()
+        os.makedirs(IMAGE_DIR, exist_ok=True)
+        path = f"{IMAGE_DIR}/{date_str}.png"
+        with open(path, "wb") as f:
+            f.write(img.content)
+        repo = os.environ["GITHUB_REPOSITORY"]        # owner/repo
+        branch = os.environ.get("GITHUB_REF_NAME", "main")
+        return f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
+    except Exception as e:
+        print(f"이미지 저장 실패, 임시 URL 사용: {e}")
+        return temp_url
+
+
+# ─────────────────────────────────────────
 # 4. 카드 빌더
 # ─────────────────────────────────────────
 
-def build_card(today: str, items: list, nutrition: dict, recent: list, dinner_rec: str) -> list:
+def build_card(today: str, items: list, nutrition: dict, recent: list,
+               dinner_rec: str, meal_image_url: str | None = None) -> list:
     body = []
+
+    # ── 점심시간 안내 (맨 위)
+    body.append({
+        "type": "TextBlock",
+        "text": get_lunch_time_msg(),
+        "weight": "Bolder",
+        "size": "Medium",
+        "color": "Accent",
+        "wrap": True
+    })
 
     # ── 헤더
     body.append({
@@ -133,6 +210,16 @@ def build_card(today: str, items: list, nutrition: dict, recent: list, dinner_re
         "weight": "Bolder",
         "size": "Large"
     })
+
+    # ── 급식판 식단 사진 (한 눈에)
+    if meal_image_url:
+        body.append({
+            "type": "Image",
+            "url": meal_image_url,
+            "size": "Stretch",
+            "altText": f"{today} 급식 이미지",
+            "spacing": "Medium"
+        })
 
     # ── 오늘 메뉴 + 영양
     for d in nutrition["dishes"]:
@@ -194,7 +281,7 @@ def build_card(today: str, items: list, nutrition: dict, recent: list, dinner_re
     # ── 푸터
     body.append({
         "type": "TextBlock",
-        "text": "※ 영양정보는 AI 추정치입니다",
+        "text": "※ 영양정보·식단 사진은 AI 추정/생성입니다",
         "size": "Small",
         "isSubtle": True,
         "spacing": "Medium"
@@ -241,15 +328,15 @@ def git_commit_history():
     today = datetime.date.today().isoformat()
     subprocess.run(["git", "config", "user.email", "bot@github-actions"], check=True)
     subprocess.run(["git", "config", "user.name", "Lunch Menu Bot"], check=True)
-    subprocess.run(["git", "add", HISTORY_PATH], check=True)
+    subprocess.run(["git", "add", "data/"], check=True)  # history.json + images 모두 포함
     result = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],
         capture_output=True
     )
     if result.returncode != 0:  # 변경사항 있을 때만 커밋
-        subprocess.run(["git", "commit", "-m", f"chore: update lunch history {today}"], check=True)
+        subprocess.run(["git", "commit", "-m", f"chore: update lunch data {today}"], check=True)
         subprocess.run(["git", "push"], check=True)
-        print("히스토리 커밋 완료")
+        print("히스토리/이미지 커밋 완료")
     else:
         print("변경사항 없음, 커밋 스킵")
 
@@ -263,7 +350,7 @@ if __name__ == "__main__":
     today_label, items = get_lunch_for_today()
 
     if not items:
-        send_text(f"오늘({today_label})은 식단 정보가 없어요 😢")
+        send_text(f"{get_lunch_time_msg()}\n\n오늘({today_label})은 식단 정보가 없어요 😢")
         print("메뉴 없음")
     else:
         try:
@@ -273,25 +360,30 @@ if __name__ == "__main__":
             nutrition = analyze_nutrition(items)
             dinner_rec = recommend_dinner(items, recent)
 
+            # 급식판 이미지 생성 → (Actions면) repo 저장 후 영구 URL
+            temp_image_url = generate_meal_image(items)
+            meal_image_url = persist_meal_image(temp_image_url, today_str)
+
             # 히스토리 업데이트
             entry = {
                 "date": today_str,
                 "day": today_label,
                 "items": items,
                 "nutrition": nutrition,
+                "image": meal_image_url,
             }
             history = upsert_history(history, entry)
             save_history(history)
-            git_commit_history()
+            git_commit_history()  # 이미지 push가 카드 전송보다 먼저 끝나야 raw URL이 뜸
 
             # 카드 전송
-            card_body = build_card(today_label, items, nutrition, recent, dinner_rec)
+            card_body = build_card(today_label, items, nutrition, recent, dinner_rec, meal_image_url)
             send_card(card_body)
             print("전송 완료")
 
         except Exception as e:
             menu = "\n".join(f"- {m}" for m in items)
             send_text(
-                f"🍱 오늘({today_label}) 점심\n{menu}\n\n(분석 실패: {e})"
+                f"{get_lunch_time_msg()}\n\n🍱 오늘({today_label}) 점심\n{menu}\n\n(분석 실패: {e})"
             )
             print("분석 실패, 메뉴만 전송:", e)
